@@ -1,9 +1,11 @@
+import os
 import json
 from django.shortcuts import render
 from django.http import JsonResponse, HttpResponseBadRequest
 from .models import MonitorRun
 from . import sampling
 from django.views.decorators.csrf import csrf_exempt
+from django.conf import settings
 
 def index(request):
     runs = MonitorRun.objects.order_by('-started_at')[:10]
@@ -36,3 +38,16 @@ def samples_json(request, run_id):
     samples = run.samples.all().values('timestamp', 'rss_kb')
     data = [{'timestamp': s['timestamp'].isoformat(), 'rss_kb': s['rss_kb']} for s in samples]
     return JsonResponse({'run_id': run.id, 'pid': run.pid, 'samples': data})
+
+LOG_FILE = os.path.join(settings.BASE_DIR, 'monitor', 'memory_logs.json')
+
+def dashboard(request):
+    return render(request, 'monitor/dashboard.html')
+
+def get_logs(request):
+    data = []
+    if os.path.exists(LOG_FILE):
+        with open(LOG_FILE, 'r') as f:
+            for line in f.readlines()[-20:]:  # last 20 entries
+                data.append(json.loads(line))
+    return JsonResponse(data, safe=False)

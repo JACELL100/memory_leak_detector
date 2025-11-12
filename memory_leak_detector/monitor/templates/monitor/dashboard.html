@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Memory Leak Dashboard</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-slate-900 text-white flex flex-col items-center p-10">
+  <h1 class="text-3xl font-bold mb-6 text-cyan-400">💻 Memory Leak Detector Dashboard</h1>
+
+  <div id="log-container" class="w-full max-w-4xl bg-slate-800 rounded-2xl p-4 shadow-lg">
+    <table class="w-full text-left border-collapse">
+      <thead>
+        <tr class="text-cyan-300 border-b border-slate-600">
+          <th class="p-2">Timestamp</th>
+          <th class="p-2">Path</th>
+          <th class="p-2">Mem Δ (MB)</th>
+          <th class="p-2">Duration (s)</th>
+        </tr>
+      </thead>
+      <tbody id="log-rows"></tbody>
+    </table>
+  </div>
+
+  <script>
+    async function fetchLogs() {
+      const res = await fetch('/api/logs/');
+      const data = await res.json();
+      const rows = data.map(log => `
+        <tr class="border-b border-slate-700 ${log.diff > 5 ? 'bg-red-700/30' : ''}">
+          <td class="p-2">${log.timestamp}</td>
+          <td class="p-2">${log.path}</td>
+          <td class="p-2">${log.diff}</td>
+          <td class="p-2">${log.duration}</td>
+        </tr>
+      `).join('');
+      document.getElementById('log-rows').innerHTML = rows;
+    }
+    fetchLogs();
+    setInterval(fetchLogs, 5000); // auto-refresh every 5 sec
+  </script>
+</body>
+</html>
