@@ -6,49 +6,146 @@
   <title>Memory Leak Detector — Monitor</title>
   <script src="https://cdn.jsdelivr.net/npm/axios/dist/axios.min.js"></script>
   <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+  <style>
+    body { background: #000; }
+    .glass-card {
+      background: rgba(255, 255, 255, 0.05);
+      backdrop-filter: blur(10px);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+    }
+    .input-field {
+      background: rgba(255, 255, 255, 0.05);
+      border: 1px solid rgba(255, 255, 255, 0.15);
+      color: #fff;
+      transition: all 0.3s ease;
+    }
+    .input-field:focus {
+      outline: none;
+      border-color: rgba(99, 102, 241, 0.5);
+      box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.1);
+    }
+    .input-field::placeholder { color: rgba(255, 255, 255, 0.3); }
+    .btn-primary {
+      background: linear-gradient(135deg, #6366f1 0%, #4f46e5 100%);
+      transition: all 0.3s ease;
+    }
+    .btn-primary:hover {
+      transform: translateY(-1px);
+      box-shadow: 0 10px 25px rgba(99, 102, 241, 0.3);
+    }
+    .btn-danger {
+      background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);
+      transition: all 0.3s ease;
+    }
+    .btn-danger:hover {
+      transform: translateY(-1px);
+      box-shadow: 0 10px 25px rgba(239, 68, 68, 0.3);
+    }
+    .btn-view {
+      background: rgba(99, 102, 241, 0.15);
+      border: 1px solid rgba(99, 102, 241, 0.3);
+      transition: all 0.3s ease;
+    }
+    .btn-view:hover {
+      background: rgba(99, 102, 241, 0.25);
+      transform: translateY(-1px);
+    }
+    .status-badge {
+      background: rgba(34, 197, 94, 0.15);
+      border: 1px solid rgba(34, 197, 94, 0.3);
+      color: #4ade80;
+    }
+  </style>
 </head>
-<body class="bg-slate-50 p-6">
-  <div class="max-w-4xl mx-auto">
-    <h1 class="text-2xl font-bold mb-4">Memory Leak Detector (Prototype)</h1>
-
-    <div class="bg-white p-4 rounded shadow mb-6">
-      <label class="block mb-2">PID to monitor</label>
-      <input id="pid" type="number" class="border p-2 rounded w-40" placeholder="e.g. 1234">
-      <label class="ml-4">Interval (s)</label>
-      <input id="interval" type="number" value="1" step="0.5" class="border p-2 rounded w-20">
-      <button id="startBtn" class="ml-4 bg-blue-600 text-white px-4 py-2 rounded">Start</button>
+<body class="p-6">
+  <div class="max-w-5xl mx-auto">
+    <!-- Header -->
+    <div class="mb-8">
+      <h1 class="text-3xl font-bold text-white mb-2">Memory Leak Detector</h1>
+      <p class="text-gray-400 text-sm">Real-time process memory monitoring</p>
     </div>
 
-    <div id="currentRun" class="hidden bg-white p-4 rounded shadow mb-6">
-      <div class="flex justify-between items-center">
-        <div>
-          <div class="text-sm text-gray-500">Monitoring PID <span id="runPid"></span></div>
-          <div class="text-xs text-gray-400">Run ID: <span id="runId"></span></div>
+    <!-- Control Panel -->
+    <div class="glass-card p-6 rounded-xl shadow-2xl mb-6">
+      <div class="flex flex-wrap items-end gap-4">
+        <div class="flex-1 min-w-max">
+          <label class="block mb-2 text-sm font-medium text-gray-300">Process ID</label>
+          <input id="pid" type="number" class="input-field p-3 rounded-lg w-full" placeholder="Enter PID (e.g. 1234)">
+        </div>
+        <div class="min-w-max">
+          <label class="block mb-2 text-sm font-medium text-gray-300">Interval (seconds)</label>
+          <input id="interval" type="number" value="1" step="0.5" class="input-field p-3 rounded-lg w-32" placeholder="1.0">
         </div>
         <div>
-          <button id="stopBtn" class="bg-red-600 text-white px-3 py-1 rounded">Stop</button>
+          <button id="startBtn" class="btn-primary text-white px-6 py-3 rounded-lg font-medium">
+            Start Monitoring
+          </button>
         </div>
-      </div>
-      <div class="mt-4">
-        <canvas id="chart" width="800" height="250"></canvas>
       </div>
     </div>
 
-    <h2 class="text-lg font-semibold mb-2">Recent runs</h2>
-    <div class="space-y-2">
-      {% for run in runs %}
-      <div class="bg-white p-3 rounded shadow flex justify-between">
-        <div>
-          <div class="font-medium">Run #{{ run.id }}</div>
-          <div class="text-sm text-gray-500">PID: {{ run.pid }} — started: {{ run.started_at }} — stopped: {{ run.stopped }}</div>
-        </div>
-        <div>
-          <button onclick="loadRun({{ run.id }})" class="bg-indigo-600 text-white px-3 py-1 rounded">View</button>
+    <!-- Active Monitor -->
+    <div id="currentRun" class="hidden glass-card rounded-xl shadow-2xl mb-6 overflow-hidden">
+      <div class="p-6 border-b border-gray-800">
+        <div class="flex justify-between items-center">
+          <div>
+            <div class="flex items-center gap-3 mb-2">
+              <div class="status-badge px-3 py-1 rounded-full text-xs font-medium">
+                ● MONITORING
+              </div>
+              <span class="text-white font-semibold">PID: <span id="runPid"></span></span>
+            </div>
+            <div class="text-xs text-gray-500">Run ID: <span id="runId" class="font-mono"></span></div>
+          </div>
+          <div>
+            <button id="stopBtn" class="btn-danger text-white px-5 py-2 rounded-lg font-medium">
+              Stop
+            </button>
+          </div>
         </div>
       </div>
-      {% empty %}
-      <div class="text-gray-500">No runs yet</div>
-      {% endfor %}
+      <div class="p-6 bg-black bg-opacity-30">
+        <canvas id="chart" width="900" height="300"></canvas>
+      </div>
+    </div>
+
+    <!-- Recent Runs -->
+    <div class="glass-card p-6 rounded-xl shadow-2xl">
+      <h2 class="text-xl font-semibold text-white mb-4 flex items-center gap-2">
+        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+        </svg>
+        Recent Runs
+      </h2>
+      <div class="space-y-3">
+        {% for run in runs %}
+        <div class="glass-card p-4 rounded-lg flex justify-between items-center hover:bg-opacity-10 transition-all">
+          <div>
+            <div class="text-white font-medium mb-1">Run #{{ run.id }}</div>
+            <div class="text-sm text-gray-400">
+              <span class="font-mono text-indigo-400">PID: {{ run.pid }}</span>
+              <span class="mx-2">•</span>
+              <span>Started: {{ run.started_at }}</span>
+              <span class="mx-2">•</span>
+              <span>Stopped: {{ run.stopped }}</span>
+            </div>
+          </div>
+          <div>
+            <button onclick="loadRun({{ run.id }})" class="btn-view text-indigo-300 px-4 py-2 rounded-lg font-medium">
+              View
+            </button>
+          </div>
+        </div>
+        {% empty %}
+        <div class="text-center py-12 text-gray-500">
+          <svg class="w-16 h-16 mx-auto mb-3 opacity-30" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path>
+          </svg>
+          <p>No monitoring runs yet</p>
+          <p class="text-xs mt-1">Start monitoring a process to see results here</p>
+        </div>
+        {% endfor %}
+      </div>
     </div>
 
   </div>
@@ -112,12 +209,51 @@
     const vals = samples.map(s => s.rss_kb);
     const maxv = Math.max(...vals);
     const minv = Math.min(...vals);
-    const padding = 30;
+    const padding = 40;
     const w = canvas.width - padding*2;
     const h = canvas.height - padding*2;
-    ctx.strokeStyle = '#ddd';
-    ctx.beginPath(); ctx.moveTo(padding, padding); ctx.lineTo(padding, padding+h); ctx.lineTo(padding+w, padding+h); ctx.stroke();
-    ctx.strokeStyle = '#0f172a';
+    
+    // Grid lines
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.05)';
+    ctx.lineWidth = 1;
+    for (let i = 0; i <= 5; i++) {
+      const y = padding + (i/5) * h;
+      ctx.beginPath();
+      ctx.moveTo(padding, y);
+      ctx.lineTo(padding + w, y);
+      ctx.stroke();
+    }
+    
+    // Axes
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.2)';
+    ctx.lineWidth = 2;
+    ctx.beginPath(); 
+    ctx.moveTo(padding, padding); 
+    ctx.lineTo(padding, padding+h); 
+    ctx.lineTo(padding+w, padding+h); 
+    ctx.stroke();
+    
+    // Gradient fill
+    const gradient = ctx.createLinearGradient(0, padding, 0, padding + h);
+    gradient.addColorStop(0, 'rgba(99, 102, 241, 0.3)');
+    gradient.addColorStop(1, 'rgba(99, 102, 241, 0.05)');
+    
+    ctx.fillStyle = gradient;
+    ctx.beginPath();
+    samples.forEach((s, i) => {
+      const x = padding + (i/(samples.length-1 || 1)) * w;
+      const y = padding + h - ((s.rss_kb - minv) / (maxv - minv || 1)) * h;
+      if (i===0) ctx.moveTo(x, y);
+      else ctx.lineTo(x, y);
+    });
+    ctx.lineTo(padding + w, padding + h);
+    ctx.lineTo(padding, padding + h);
+    ctx.closePath();
+    ctx.fill();
+    
+    // Line
+    ctx.strokeStyle = '#6366f1';
+    ctx.lineWidth = 3;
     ctx.beginPath();
     samples.forEach((s, i) => {
       const x = padding + (i/(samples.length-1 || 1)) * w;
@@ -125,9 +261,13 @@
       if (i===0) ctx.moveTo(x,y); else ctx.lineTo(x,y);
     });
     ctx.stroke();
-    ctx.fillStyle = '#334155';
-    ctx.fillText(`${minv} KB`, 5, canvas.height - 5);
-    ctx.fillText(`${maxv} KB`, 5, 12);
+    
+    // Labels
+    ctx.fillStyle = '#9ca3af';
+    ctx.font = '12px monospace';
+    ctx.fillText(`${Math.round(maxv).toLocaleString()} KB`, 5, padding - 5);
+    ctx.fillText(`${Math.round(minv).toLocaleString()} KB`, 5, canvas.height - padding + 20);
+    ctx.fillText(`${samples.length} samples`, canvas.width - 100, canvas.height - padding + 20);
   }
   </script>
 </body>
