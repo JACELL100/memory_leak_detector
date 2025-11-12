@@ -1,0 +1,134 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Memory Leak Detector — Monitor</title>
+  <script src="https://cdn.jsdelivr.net/npm/axios/dist/axios.min.js"></script>
+  <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+</head>
+<body class="bg-slate-50 p-6">
+  <div class="max-w-4xl mx-auto">
+    <h1 class="text-2xl font-bold mb-4">Memory Leak Detector (Prototype)</h1>
+
+    <div class="bg-white p-4 rounded shadow mb-6">
+      <label class="block mb-2">PID to monitor</label>
+      <input id="pid" type="number" class="border p-2 rounded w-40" placeholder="e.g. 1234">
+      <label class="ml-4">Interval (s)</label>
+      <input id="interval" type="number" value="1" step="0.5" class="border p-2 rounded w-20">
+      <button id="startBtn" class="ml-4 bg-blue-600 text-white px-4 py-2 rounded">Start</button>
+    </div>
+
+    <div id="currentRun" class="hidden bg-white p-4 rounded shadow mb-6">
+      <div class="flex justify-between items-center">
+        <div>
+          <div class="text-sm text-gray-500">Monitoring PID <span id="runPid"></span></div>
+          <div class="text-xs text-gray-400">Run ID: <span id="runId"></span></div>
+        </div>
+        <div>
+          <button id="stopBtn" class="bg-red-600 text-white px-3 py-1 rounded">Stop</button>
+        </div>
+      </div>
+      <div class="mt-4">
+        <canvas id="chart" width="800" height="250"></canvas>
+      </div>
+    </div>
+
+    <h2 class="text-lg font-semibold mb-2">Recent runs</h2>
+    <div class="space-y-2">
+      {% for run in runs %}
+      <div class="bg-white p-3 rounded shadow flex justify-between">
+        <div>
+          <div class="font-medium">Run #{{ run.id }}</div>
+          <div class="text-sm text-gray-500">PID: {{ run.pid }} — started: {{ run.started_at }} — stopped: {{ run.stopped }}</div>
+        </div>
+        <div>
+          <button onclick="loadRun({{ run.id }})" class="bg-indigo-600 text-white px-3 py-1 rounded">View</button>
+        </div>
+      </div>
+      {% empty %}
+      <div class="text-gray-500">No runs yet</div>
+      {% endfor %}
+    </div>
+
+  </div>
+
+  <script>
+  let pollInterval = null;
+  let currentRunId = null;
+
+  document.getElementById('startBtn').onclick = async () => {
+    const pid = document.getElementById('pid').value;
+    const interval = document.getElementById('interval').value || 1.0;
+    if (!pid) { alert('Enter PID'); return; }
+    try {
+      const resp = await axios.post('/start/', { pid: pid, interval: interval });
+      currentRunId = resp.data.run_id;
+      document.getElementById('runId').innerText = currentRunId;
+      document.getElementById('runPid').innerText = pid;
+      document.getElementById('currentRun').classList.remove('hidden');
+      startPolling(currentRunId);
+    } catch (e) { alert('Start failed'); }
+  }
+
+  document.getElementById('stopBtn').onclick = async () => {
+    if (!currentRunId) return;
+    await axios.post(`/stop/${currentRunId}/`);
+    stopPolling();
+  }
+
+  async function loadRun(id) {
+    currentRunId = id;
+    document.getElementById('currentRun').classList.remove('hidden');
+    document.getElementById('runId').innerText = id;
+    const r = await axios.get(`/samples/${id}/`);
+    document.getElementById('runPid').innerText = r.data.pid;
+    renderChart(r.data.samples);
+    startPolling(id);
+  }
+
+  function startPolling(id) {
+    if (pollInterval) clearInterval(pollInterval);
+    pollInterval = setInterval(async () => {
+      try {
+        const r = await axios.get(`/samples/${id}/`);
+        renderChart(r.data.samples);
+      } catch (e) { /* ignore */ }
+    }, 1000);
+  }
+
+  function stopPolling() {
+    if (pollInterval) clearInterval(pollInterval);
+    pollInterval = null;
+    currentRunId = null;
+    document.getElementById('currentRun').classList.add('hidden');
+  }
+
+  function renderChart(samples) {
+    const canvas = document.getElementById('chart');
+    const ctx = canvas.getContext('2d');
+    ctx.clearRect(0,0,canvas.width,canvas.height);
+    if (!samples || samples.length === 0) return;
+    const vals = samples.map(s => s.rss_kb);
+    const maxv = Math.max(...vals);
+    const minv = Math.min(...vals);
+    const padding = 30;
+    const w = canvas.width - padding*2;
+    const h = canvas.height - padding*2;
+    ctx.strokeStyle = '#ddd';
+    ctx.beginPath(); ctx.moveTo(padding, padding); ctx.lineTo(padding, padding+h); ctx.lineTo(padding+w, padding+h); ctx.stroke();
+    ctx.strokeStyle = '#0f172a';
+    ctx.beginPath();
+    samples.forEach((s, i) => {
+      const x = padding + (i/(samples.length-1 || 1)) * w;
+      const y = padding + h - ((s.rss_kb - minv) / (maxv - minv || 1)) * h;
+      if (i===0) ctx.moveTo(x,y); else ctx.lineTo(x,y);
+    });
+    ctx.stroke();
+    ctx.fillStyle = '#334155';
+    ctx.fillText(`${minv} KB`, 5, canvas.height - 5);
+    ctx.fillText(`${maxv} KB`, 5, 12);
+  }
+  </script>
+</body>
+</html>
